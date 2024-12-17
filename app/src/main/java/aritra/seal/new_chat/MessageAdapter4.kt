@@ -1,10 +1,10 @@
 package aritra.seal.new_chat
 
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import androidx.appcompat.widget.AppCompatImageView
 import androidx.recyclerview.widget.RecyclerView
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -28,6 +28,23 @@ class MessageAdapter(private val messages: List<aritra.seal.new_chat.Message>, p
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val message = messages[position]
+
+        // Step 1: If the message text is encrypted (check for some flag or condition), decrypt it
+        if (message.text.startsWith("ENCRYPTED_")) { // Use your condition here to check if it's encrypted
+            // Step 2: Retrieve the private key from the Keystore
+            val privateKey = EncryptionUtils.getPrivateKeyFromKeystore()
+
+            // Step 3: Decrypt the AES key (if encrypted) using RSA and the private key
+            val decryptedAESKey = EncryptionUtils.decryptAESKeyWithRSA(message.encryptedAESKey, privateKey)
+
+            // Step 4: Decrypt the message using the decrypted AES key
+            val decryptedMessage = EncryptionUtils.decryptMessageAES(message.text, decryptedAESKey)
+            Log.d("MessageAdapter", "Decrypted message: $decryptedMessage")
+
+            // Step 5: Set the decrypted message as the original message text
+            message.text = decryptedMessage
+        }
+
         if (holder is SentMessageViewHolder) {
             holder.bind(message)
         } else if (holder is ReceivedMessageViewHolder) {
@@ -50,16 +67,15 @@ class MessageAdapter(private val messages: List<aritra.seal.new_chat.Message>, p
             seenIndicator.visibility = if (message.seen) View.VISIBLE else View.GONE
 
             // Format timestamp to a readable time, e.g., "12:45 PM"
-            val formattedTime = SimpleDateFormat("hh:mm ", Locale.getDefault()).format(Date(message.timestamp))
+            val formattedTime = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(message.timestamp))
             messageTime.text = formattedTime
             messageText.text = message.text
-
-
         }
     }
 
     inner class ReceivedMessageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val messageText: TextView = itemView.findViewById(R.id.messageText)
+
         fun bind(message: aritra.seal.new_chat.Message) {
             messageText.text = message.text
         }

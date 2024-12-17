@@ -101,6 +101,8 @@ class MainActivity : AppCompatActivity() {
         userAdapter = UserAdapter(userList) { selectedUser ->
             val intent = Intent(this, ChatScreen::class.java)
             intent.putExtra("RECEIVER_USER_ID", selectedUser.uid)
+            intent.putExtra("RECEIVER_USERNAME", selectedUser.username)
+            intent.putExtra("RECEIVER_PROFILE_IMAGE", selectedUser.imageUri)
             startActivity(intent)
         }
         activeChatsRecyclerView.adapter = userAdapter

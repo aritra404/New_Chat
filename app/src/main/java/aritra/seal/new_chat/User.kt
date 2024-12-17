@@ -1,11 +1,13 @@
 package aritra.seal.new_chat
 
 data class User(
-    val email: String? = null,
-    val imageUri: String? = null,
-    val uid: String? = null,
-    var username: String? = null
+    val email: String,
+    val imageUri: String?,
+    val uid: String,
+    val username: String,
+    val publicKey: String
 )
+
 {
-constructor() : this(null.toString(), null, null.toString(), null.toString())
+constructor() : this(null.toString(), null, null.toString(), null.toString(),null.toString())
 }

@@ -3,6 +3,7 @@ package aritra.seal.new_chat
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import android.widget.Button
 import android.widget.EditText
@@ -11,11 +12,17 @@ import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import aritra.seal.new_chat.EncryptionUtils.generateRSAKeyPair
 import com.bumptech.glide.Glide
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
+import java.security.KeyPair
+import java.security.KeyPairGenerator
+import java.security.PrivateKey
+import java.security.PublicKey
+import java.security.spec.X509EncodedKeySpec
 import java.util.UUID
 
 class SignUpActivity : AppCompatActivity() {
@@ -71,16 +78,21 @@ class SignUpActivity : AppCompatActivity() {
                 if (task.isSuccessful) {
                     val userId = auth.currentUser?.uid
                     userId?.let {
+                        // Generate RSA Key Pair
+                        val keyPair = generateRSAKeyPair()
+                        val publicKeyString = EncryptionUtils.publicKeyToString(keyPair.public)
+
+                        // Upload the profile image if selected
                         if (imageUri != null) {
                             uploadProfileImage(imageUri!!) { downloadUrl ->
                                 if (downloadUrl != null) {
                                     updateUserProfile(username, downloadUrl)
-                                    saveUserToDatabase(username, userId, email, downloadUrl)
+                                    saveUserToDatabase(username, userId, email, downloadUrl, publicKeyString)
                                 }
                             }
                         } else {
                             updateUserProfile(username, null)
-                            saveUserToDatabase(username, userId, email, null)
+                            saveUserToDatabase(username, userId, email, null, publicKeyString)
                         }
                     }
                 } else {
@@ -89,6 +101,7 @@ class SignUpActivity : AppCompatActivity() {
                 }
             }
     }
+
 
     private fun uploadProfileImage(imageUri: Uri, onComplete: (String?) -> Unit) {
         val storageRef = storage.reference.child("profile_images/${UUID.randomUUID()}")
@@ -125,10 +138,22 @@ class SignUpActivity : AppCompatActivity() {
             }
     }
 
-    private fun saveUserToDatabase(username: String, userId: String, email: String, profileImageUrl: String?) {
+    private fun saveUserToDatabase(
+        username: String,
+        userId: String,
+        email: String,
+        profileImageUrl: String?,
+        publicKey: String
+    ) {
         val databaseRef = FirebaseDatabase.getInstance().getReference("users").child(userId)
 
-        val user = User(email = email, imageUri = profileImageUrl, uid = userId, username = username)
+        val user = User(
+            email = email,
+            imageUri = profileImageUrl,
+            uid = userId,
+            username = username,
+            publicKey = publicKey
+        )
 
         databaseRef.setValue(user)
             .addOnSuccessListener {
