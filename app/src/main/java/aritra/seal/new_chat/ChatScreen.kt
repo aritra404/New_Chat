@@ -64,21 +64,23 @@ class ChatScreen : AppCompatActivity() {
     }
 
     private fun sendMessage(messageText: String) {
-        // Fetch receiver's public key asynchronously
+        // Step 1: Fetch receiver's public key asynchronously
         getReceiverPublicKey(receiverUserId) { receiverPublicKey ->
             if (receiverPublicKey == null) {
-                Log.e("SendMessage", "Public key for receiver not found.")
+                Log.e("SendMessage", "Public key for receiver not found. Cannot send message.")
                 return@getReceiverPublicKey
             }
 
             try {
-                // Generate AES key and encrypt the message
+                // Step 2: Generate AES key and encrypt the message
                 val aesKey = EncryptionUtils.generateAESKey()
                 val encryptedMessage = EncryptionUtils.encryptMessageAES(messageText, aesKey)
                 val encryptedAESKey = EncryptionUtils.encryptAESKeyWithRSA(aesKey, receiverPublicKey)
+
+                // Step 3: Generate HMAC for integrity verification
                 val hmac = EncryptionUtils.generateHMAC(messageText, aesKey)
 
-                // Create the message object
+                // Step 4: Construct the Message object
                 val message = Message(
                     senderId = currentUserId,
                     receiverId = receiverUserId,
@@ -89,28 +91,39 @@ class ChatScreen : AppCompatActivity() {
                     seen = false
                 )
 
-                // Send the message to Firebase
+                // Step 5: Save the message to Firebase
                 val conversationId = getConversationId(currentUserId, receiverUserId)
-                FirebaseDatabase.getInstance().getReference("messages/$conversationId")
-                    .push()
+                val messageRef = FirebaseDatabase.getInstance()
+                    .getReference("messages/$conversationId")
+
+                messageRef.push()
                     .setValue(message)
                     .addOnSuccessListener {
                         Log.d("SendMessage", "Message sent successfully.")
+
+                        // Step 6: Update UI immediately (show the plaintext message in the sender's chat)
+                        val tempMessage = message.copy(text = messageText) // Use original text for UI
+                        messageList.add(tempMessage)
+                        messageAdapter.notifyItemInserted(messageList.size - 1)
+                        recyclerView.scrollToPosition(messageList.size - 1)
                     }
                     .addOnFailureListener { error ->
                         Log.e("SendMessage", "Failed to send message: ${error.message}")
                     }
+
             } catch (e: Exception) {
-                Log.e("SendMessage", "Error encrypting or sending message: ${e.message}")
+                Log.e("SendMessage", "Error during encryption or message preparation: ${e.message}")
             }
         }
     }
 
 
 
+
     private fun receiveMessages() {
         val conversationId = getConversationId(currentUserId, receiverUserId)
         val messagesRef = FirebaseDatabase.getInstance().getReference("messages/$conversationId")
+
         messagesRef.addChildEventListener(object : ChildEventListener {
             override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
                 val message = snapshot.getValue(Message::class.java)
@@ -121,11 +134,16 @@ class ChatScreen : AppCompatActivity() {
                         val privateKey = EncryptionUtils.getPrivateKeyFromKeystore()
                         val decryptedAESKey = EncryptionUtils.decryptAESKeyWithRSA(message.encryptedAESKey, privateKey)
 
-// Step 2: Decrypt the message using the decrypted AES key
+                        // Step 2: Decrypt the message using the decrypted AES key
                         val decryptedMessage = EncryptionUtils.decryptMessageAES(message.text, decryptedAESKey)
                         message.text = decryptedMessage // Replace with decrypted message text
 
-                        // Add the decrypted message to the list
+                        // Step 3: Mark the message as seen if the recipient is the current user
+                        if (message.receiverId == currentUserId && !message.seen) {
+                            snapshot.ref.child("seen").setValue(true)
+                        }
+
+                        // Step 4: Add the message to the list and update the UI
                         messageList.add(message)
                         messageAdapter.notifyItemInserted(messageList.size - 1)
 
@@ -139,16 +157,32 @@ class ChatScreen : AppCompatActivity() {
             }
 
             override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
-                // Handle changes (if any)
+                val updatedMessage = snapshot.getValue(Message::class.java)
+
+                if (updatedMessage != null) {
+                    // Find the message in the list and update it
+                    val index = messageList.indexOfFirst { it.timestamp == updatedMessage.timestamp }
+                    if (index != -1) {
+                        messageList[index] = updatedMessage
+                        messageAdapter.notifyItemChanged(index)
+                    }
+                }
             }
 
-            override fun onChildRemoved(snapshot: DataSnapshot) {}
-            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onChildRemoved(snapshot: DataSnapshot) {
+                // Optional: Handle message deletions (if needed)
+            }
+
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {
+                // Optional: Handle child moves (not common for messages)
+            }
+
             override fun onCancelled(error: DatabaseError) {
-                Log.e("FirebaseError", "Error: ${error.message}")
+                Log.e("FirebaseError", "Error loading messages: ${error.message}")
             }
         })
     }
+
 
 
 
