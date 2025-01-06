@@ -2,31 +2,46 @@ package aritra.seal.new_chat
 
 import android.os.Build
 import android.os.Bundle
+import android.os.CountDownTimer
 import android.view.MotionEvent
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.FirebaseDatabase
+import kotlin.math.abs
 
 class FullScreenStoryActivity : AppCompatActivity() {
-
     private lateinit var storyImageView: ImageView
     private lateinit var userNameTextView: TextView
+    private lateinit var progressBar: ProgressBar
     private lateinit var userStories: List<Story>
     private var currentIndex = 0
+    private var storyTimer: CountDownTimer? = null
     private var touchXStart = 0f
-    private var touchXEnd = 0f
+    private var touchYStart = 0f
+    private var isPaused = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_full_screen_story)
 
-        // Initialize views
+        initializeViews()
+        setupStories()
+        setupTouchListeners()
+    }
+
+    private fun initializeViews() {
         storyImageView = findViewById(R.id.fullscreen_story_image)
         userNameTextView = findViewById(R.id.fullscreen_story_username)
+        progressBar = findViewById(R.id.storyProgressBar)
+    }
 
-        // Retrieve stories from intent safely
+    private fun setupStories() {
         userStories = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.getParcelableArrayListExtra("STORY_LIST", Story::class.java) ?: emptyList()
         } else {
@@ -35,24 +50,26 @@ class FullScreenStoryActivity : AppCompatActivity() {
         }
 
         if (userStories.isEmpty()) {
-            Toast.makeText(this, "No stories to display.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "No stories to display", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
-        // Show the first story
         showStory(currentIndex)
+    }
 
-        // Handle swipe gestures
+    private fun setupTouchListeners() {
         storyImageView.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     touchXStart = event.x
+                    touchYStart = event.y
+                    pauseStory()
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    touchXEnd = event.x
-                    handleSwipeGesture()
+                    handleTouchEvent(event)
+                    resumeStory()
                     true
                 }
                 else -> false
@@ -61,24 +78,100 @@ class FullScreenStoryActivity : AppCompatActivity() {
     }
 
     private fun showStory(index: Int) {
-        if (index in userStories.indices) {
-            val story = userStories[index]
-
-            // Load story image
-            Glide.with(this)
-                .load(story.storyUrl)
-                .into(storyImageView)
-
-            // Update username
-            userNameTextView.text = story.username
-
-            // Add a fade-in animation (optional)
-            storyImageView.alpha = 0f
-            storyImageView.animate().alpha(1f).duration = 300
-        } else {
-            // Handle invalid index
-            Toast.makeText(this, "Invalid story index.", Toast.LENGTH_SHORT).show()
+        if (index !in userStories.indices) {
             finish()
+            return
+        }
+
+        val story = userStories[index]
+
+        // Load story content based on type
+        when (story.type) {
+            StoryType.IMAGE -> loadImage(story)
+            StoryType.VIDEO -> loadVideo(story)
+        }
+
+        userNameTextView.text = story.username
+        markStoryAsViewed(story)
+        startStoryTimer(story.duration)
+    }
+
+    private fun loadImage(story: Story) {
+        Glide.with(this)
+            .load(story.storyUrl)
+            .transition(DrawableTransitionOptions.withCrossFade())
+            .into(storyImageView)
+    }
+
+    private fun loadVideo(story: Story) {
+        // Implement video loading logic here
+    }
+
+    private fun startStoryTimer(duration: Long) {
+        storyTimer?.cancel()
+        progressBar.progress = 0
+        progressBar.max = duration.toInt()
+
+        storyTimer = object : CountDownTimer(duration, 50) {
+            override fun onTick(millisUntilFinished: Long) {
+                if (!isPaused) {
+                    val progress = (duration - millisUntilFinished).toInt()
+                    progressBar.progress = progress
+                }
+            }
+
+            override fun onFinish() {
+                showNextStory()
+            }
+        }.start()
+    }
+
+    private fun pauseStory() {
+        isPaused = true
+    }
+
+    private fun resumeStory() {
+        isPaused = false
+    }
+
+    private fun markStoryAsViewed(story: Story) {
+        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        if (!story.viewedBy.contains(currentUserId)) {
+            story.viewedBy.add(currentUserId)
+            FirebaseDatabase.getInstance().reference
+                .child("stories")
+                .child(story.userId)
+                .child(story.timestamp.toString())
+                .child("viewedBy")
+                .setValue(story.viewedBy)
+        }
+    }
+
+    private fun handleTouchEvent(event: MotionEvent) {
+        val deltaX = event.x - touchXStart
+        val deltaY = event.y - touchYStart
+
+        when {
+            abs(deltaX) > abs(deltaY) && abs(deltaX) > 100 -> {
+                // Horizontal swipe
+                if (deltaX > 0) showPreviousStory() else showNextStory()
+            }
+            abs(deltaY) > abs(deltaX) && abs(deltaY) > 100 -> {
+                // Vertical swipe
+                finish()
+            }
+            else -> {
+                // Tap
+                handleTapNavigation(event)
+            }
+        }
+    }
+
+    private fun handleTapNavigation(event: MotionEvent) {
+        val screenWidth = resources.displayMetrics.widthPixels
+        when {
+            event.x < screenWidth / 3 -> showPreviousStory()
+            event.x > screenWidth * 2 / 3 -> showNextStory()
         }
     }
 
@@ -87,7 +180,6 @@ class FullScreenStoryActivity : AppCompatActivity() {
             currentIndex++
             showStory(currentIndex)
         } else {
-            Toast.makeText(this, "You’ve viewed all stories.", Toast.LENGTH_SHORT).show()
             finish()
         }
     }
@@ -96,24 +188,11 @@ class FullScreenStoryActivity : AppCompatActivity() {
         if (currentIndex > 0) {
             currentIndex--
             showStory(currentIndex)
-        } else {
-            Toast.makeText(this, "This is the first story.", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun handleSwipeGesture() {
-        val swipeThreshold = 100f // Minimum distance for a swipe gesture
-        val deltaX = touchXEnd - touchXStart
-
-        when {
-            deltaX > swipeThreshold -> {
-                // Swipe right (go to previous story)
-                showPreviousStory()
-            }
-            deltaX < -swipeThreshold -> {
-                // Swipe left (go to next story)
-                showNextStory()
-            }
-        }
+    override fun onDestroy() {
+        super.onDestroy()
+        storyTimer?.cancel()
     }
 }

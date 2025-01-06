@@ -68,6 +68,7 @@ dependencies {
     kapt ("com.github.bumptech.glide:compiler:4.15.1")
 
     implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation ("com.github.rahatarmanahmed:circularprogressview:2.5.0")
 
 
 }

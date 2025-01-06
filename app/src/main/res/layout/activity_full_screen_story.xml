@@ -5,6 +5,24 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
+    <!-- Progress Bar Container -->
+    <LinearLayout
+        android:id="@+id/storyProgressContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp"
+       >
+
+        <ProgressBar
+            android:id="@+id/storyProgressBar"
+            style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:progressTint="@android:color/white"
+            android:progressBackgroundTint="#80FFFFFF" />
+    </LinearLayout>
+
     <!-- Story Image -->
     <ImageView
         android:id="@+id/fullscreen_story_image"

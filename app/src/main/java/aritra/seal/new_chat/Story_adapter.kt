@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import com.bumptech.glide.Glide
+import com.google.firebase.auth.FirebaseAuth
 
 class Story_adapter(
     private val context: Context,
@@ -19,14 +20,21 @@ class Story_adapter(
     inner class StoryViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val storyImageView: ImageView = itemView.findViewById(R.id.story_image)
         val userNameTextView: TextView = itemView.findViewById(R.id.story_username)
+        val storyRing: ImageView = itemView.findViewById(R.id.story_ring)
 
         fun bind(story: Story) {
-            Glide.with(context).load(story.profilePicUrl).into(storyImageView)
+            // Load profile picture
+            Glide.with(context)
+                .load(story.profilePicUrl)
+                .circleCrop()
+                .into(storyImageView)
+
             userNameTextView.text = story.username
 
-
-
-
+            // Show colored ring for unviewed stories
+            val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+            val isViewed = currentUserId?.let { story.viewedBy.contains(it) } ?: false
+            storyRing.visibility = if (isViewed) View.GONE else View.VISIBLE
         }
     }
 
@@ -38,19 +46,8 @@ class Story_adapter(
     override fun onBindViewHolder(holder: StoryViewHolder, position: Int) {
         val story = storyList[position]
         holder.bind(story)
-
-        holder.itemView.setOnClickListener {
-            val userId = story.userId
-            // Filter all stories of the selected user
-            val userStories = storyList.filter { it.userId == userId }
-            val intent = Intent(context, FullScreenStoryActivity::class.java)
-            intent.putParcelableArrayListExtra("STORY_LIST", ArrayList(userStories))
-            context.startActivity(intent)
-        }
+        holder.itemView.setOnClickListener { onStoryClick(story) }
     }
 
-
-    override fun getItemCount(): Int {
-        return storyList.size
-    }
+    override fun getItemCount() = storyList.size
 }
