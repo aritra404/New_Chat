@@ -194,43 +194,32 @@ class MainActivity : AppCompatActivity() {
         val storiesRef = FirebaseDatabase.getInstance().getReference("stories")
         storiesRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                storyList.clear()
-                val uniqueUsers = mutableMapOf<String, Story>() // To hold unique users and one story for display
+                val storiesMap = mutableMapOf<String, MutableList<Story>>()
 
-                for (userStorySnapshot in snapshot.children) {
-                    val userId = userStorySnapshot.key ?: continue
+                for (userSnapshot in snapshot.children) {
+                    val userId = userSnapshot.key ?: continue
+                    val userStories = mutableListOf<Story>()
 
-                    val userStories = userStorySnapshot.children.mapNotNull { storySnapshot ->
-                        storySnapshot.getValue(Story::class.java)
+                    for (storySnapshot in userSnapshot.children) {
+                        storySnapshot.getValue(Story::class.java)?.let { story ->
+                            if (story.expiresAt > System.currentTimeMillis()) {
+                                userStories.add(story)
+                            }
+                        }
                     }
 
                     if (userStories.isNotEmpty()) {
-                        // Store all stories of the user for later use
-                        storyList.addAll(userStories)
-
-                        // Add only one story for this user to show in the RecyclerView
-                        uniqueUsers[userId] = userStories.first()
+                        storiesMap[userId] = userStories
                     }
                 }
 
-                // Update the adapter with unique users
-                val displayList = uniqueUsers.values.toList()
-                storyAdapter = Story_adapter(this@MainActivity, displayList) { selectedStory ->
-                    // When a user clicks, filter and pass their stories to FullScreenStoryActivity
-                    val selectedUserId = selectedStory.userId
-                    val userStories = storyList.filter { it.userId == selectedUserId }
-                    val intent = Intent(this@MainActivity, FullScreenStoryActivity::class.java)
-                    intent.putParcelableArrayListExtra("STORY_LIST", ArrayList(userStories))
-                    startActivity(intent)
-                }
-                storiesRecyclerView.adapter = storyAdapter
-                storyAdapter.notifyDataSetChanged()
-                swipeRefreshLayout.isRefreshing = false
+                // Update RecyclerView with preview of first story for each user
+                val previewList = storiesMap.map { it.value.first() }
+                storyAdapter.updateStories(previewList, storiesMap)
             }
 
             override fun onCancelled(error: DatabaseError) {
                 Log.e("Firebase", "Failed to fetch stories", error.toException())
-                swipeRefreshLayout.isRefreshing = false
             }
         })
     }

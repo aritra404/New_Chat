@@ -13,7 +13,8 @@ import com.google.firebase.auth.FirebaseAuth
 
 class Story_adapter(
     private val context: Context,
-    private val storyList: List<Story>,
+    private var storyList: List<Story>,
+    private var storiesMap: Map<String, List<Story>> = emptyMap(),
     private val onStoryClick: (Story) -> Unit
 ) : RecyclerView.Adapter<Story_adapter.StoryViewHolder>() {
 
@@ -21,6 +22,7 @@ class Story_adapter(
         val storyImageView: ImageView = itemView.findViewById(R.id.story_image)
         val userNameTextView: TextView = itemView.findViewById(R.id.story_username)
         val storyRing: ImageView = itemView.findViewById(R.id.story_ring)
+
 
         fun bind(story: Story) {
             // Load profile picture
@@ -43,11 +45,32 @@ class Story_adapter(
         return StoryViewHolder(view)
     }
 
+    fun updateStories(newStoryList: List<Story>, newStoriesMap: Map<String, List<Story>>) {
+        storyList = newStoryList
+        storiesMap = newStoriesMap
+        notifyDataSetChanged()
+    }
+
+
     override fun onBindViewHolder(holder: StoryViewHolder, position: Int) {
         val story = storyList[position]
         holder.bind(story)
-        holder.itemView.setOnClickListener { onStoryClick(story) }
+
+        holder.itemView.setOnClickListener {
+            val userStories = storiesMap[story.userId] ?: listOf(story)
+            val intent = Intent(context, FullScreenStoryActivity::class.java).apply {
+                putParcelableArrayListExtra("STORY_LIST", ArrayList(userStories))
+                putExtra("START_POSITION", findFirstUnseenStoryPosition(userStories))
+            }
+            context.startActivity(intent)
+        }
     }
+
+    private fun findFirstUnseenStoryPosition(stories: List<Story>): Int {
+        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return 0
+        return stories.indexOfFirst { !it.viewedBy.contains(currentUserId) }.takeIf { it != -1 } ?: 0
+    }
+
 
     override fun getItemCount() = storyList.size
 }

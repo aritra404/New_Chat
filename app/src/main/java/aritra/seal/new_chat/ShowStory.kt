@@ -55,6 +55,8 @@ class FullScreenStoryActivity : AppCompatActivity() {
             return
         }
 
+        // Start from the specified position (first unseen story)
+        currentIndex = intent.getIntExtra("START_POSITION", 0)
         showStory(currentIndex)
     }
 
@@ -82,6 +84,7 @@ class FullScreenStoryActivity : AppCompatActivity() {
             finish()
             return
         }
+
 
         val story = userStories[index]
 
@@ -138,6 +141,8 @@ class FullScreenStoryActivity : AppCompatActivity() {
         val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
         if (!story.viewedBy.contains(currentUserId)) {
             story.viewedBy.add(currentUserId)
+
+            // Update viewed status in Firebase
             FirebaseDatabase.getInstance().reference
                 .child("stories")
                 .child(story.userId)

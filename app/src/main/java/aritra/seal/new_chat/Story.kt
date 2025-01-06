@@ -14,7 +14,9 @@ data class Story(
     var duration: Long = 5000, // Default 5 seconds duration
     var viewedBy: MutableList<String> = mutableListOf(),
     var expiresAt: Long = timestamp + 24 * 60 * 60 * 1000 // 24 hours from creation
-) : Parcelable
+) : Parcelable {
+    fun isViewedBy(userId: String): Boolean = viewedBy.contains(userId)
+}
 
 enum class StoryType {
     IMAGE, VIDEO
