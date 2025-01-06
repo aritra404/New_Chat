@@ -65,7 +65,6 @@ class MainActivity : AppCompatActivity() {
 
         // Set up the listener for refresh action
         swipeRefreshLayout.setOnRefreshListener {
-            // Call fetch methods to reload the data
             fetchStories()
             fetchUsersWithConversations()
         }
@@ -80,18 +79,14 @@ class MainActivity : AppCompatActivity() {
         storiesRecyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         storyList = ArrayList()
         storyAdapter = Story_adapter(this, storyList) { selectedStory ->
-
             val selectedUserId = selectedStory.userId
-            val userStories = storyList.filter { it.userId == selectedUserId } // Filter by selected user's ID
-            
+            val userStories = storyList.filter { it.userId == selectedUserId }
             val intent = Intent(this, FullScreenStoryActivity::class.java)
-            intent.putParcelableArrayListExtra("STORY_LIST", ArrayList(storyList))
-            intent.putExtra("CURRENT_INDEX", storyList.indexOf(selectedStory))
+            intent.putParcelableArrayListExtra("STORY_LIST", ArrayList(userStories))
             startActivity(intent)
         }
         storiesRecyclerView.adapter = storyAdapter
 
-        // Fetch stories to display
         fetchStories()
 
         // Initialize RecyclerView for active chats
@@ -107,13 +102,8 @@ class MainActivity : AppCompatActivity() {
         }
         activeChatsRecyclerView.adapter = userAdapter
 
-        // Initialize Firebase database reference for conversations
-        database = FirebaseDatabase.getInstance().getReference("conversations")
-
-        // Fetch users with active conversations
         fetchUsersWithConversations()
 
-        // Bottom Navigation setup
         bottomNav = findViewById(R.id.bottomNav)
         bottomNav.setOnNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
@@ -125,36 +115,10 @@ class MainActivity : AppCompatActivity() {
                     startActivity(Intent(this, ShowUsersActivity::class.java))
                     true
                 }
-                R.id.settings -> {
-                    true
-                }
+                R.id.settings -> true
                 else -> false
             }
         }
-    }
-
-    private fun fetchStories() {
-        val storiesRef = FirebaseDatabase.getInstance().getReference("stories")
-        storiesRef.addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                storyList.clear()
-                for (userStorySnapshot in snapshot.children) {
-                    for (storySnapshot in userStorySnapshot.children) {
-                        val story = storySnapshot.getValue(Story::class.java)
-                        if (story != null) {
-                            storyList.add(story)
-                        }
-                    }
-                }
-                storyAdapter.notifyDataSetChanged()
-                swipeRefreshLayout.isRefreshing = false  // Stop the refresh animation
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("Firebase", "Failed to fetch stories", error.toException())
-                swipeRefreshLayout.isRefreshing = false  // Stop the refresh animation in case of error
-            }
-        })
     }
 
     private fun fetchUsersWithConversations() {
@@ -179,7 +143,7 @@ class MainActivity : AppCompatActivity() {
 
             override fun onCancelled(error: DatabaseError) {
                 Log.e("Firebase", "Failed to fetch messages", error.toException())
-                swipeRefreshLayout.isRefreshing = false  // Stop the refresh animation in case of error
+                swipeRefreshLayout.isRefreshing = false
             }
         })
     }
@@ -207,30 +171,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun uploadStoryToFirebase(storyUri: Uri) {
-        val user = auth.currentUser
+        val user = auth.currentUser ?: return
 
-        if (user == null) {
-            Toast.makeText(this, "User not logged in", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // Upload story image to Firebase Storage
         val storyRef = storageReference.child("stories/${System.currentTimeMillis()}.jpg")
         storyRef.putFile(storyUri).addOnSuccessListener { taskSnapshot ->
             taskSnapshot.metadata?.reference?.downloadUrl?.addOnSuccessListener { uri ->
-                // Successfully uploaded, now save story data to Firebase Realtime Database
                 val storyUrl = uri.toString()
-
-                // Fetch user info
                 val profilePicUrl = user.photoUrl?.toString() ?: "default_profile_pic_url"
                 val username = user.displayName ?: "Anonymous"
                 val userId = user.uid
-
-                // Create story object
                 val timestamp = System.currentTimeMillis()
                 val story = Story(storyUrl, profilePicUrl, username, timestamp, userId)
 
-                // Save story data to Firebase Realtime Database
                 saveStoryToDatabase(story)
             }
         }.addOnFailureListener { exception ->
@@ -238,17 +190,62 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveStoryToDatabase(story: Story) {
-        // Create a unique key for each story under the user's ID
-        val storyRef = FirebaseDatabase.getInstance().getReference("stories").child(story.userId).push()
+    private fun fetchStories() {
+        val storiesRef = FirebaseDatabase.getInstance().getReference("stories")
+        storiesRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                storyList.clear()
+                val uniqueUsers = mutableMapOf<String, Story>() // To hold unique users and one story for display
 
-        // Save the story data
-        storyRef.setValue(story).addOnCompleteListener { task ->
+                for (userStorySnapshot in snapshot.children) {
+                    val userId = userStorySnapshot.key ?: continue
+
+                    val userStories = userStorySnapshot.children.mapNotNull { storySnapshot ->
+                        storySnapshot.getValue(Story::class.java)
+                    }
+
+                    if (userStories.isNotEmpty()) {
+                        // Store all stories of the user for later use
+                        storyList.addAll(userStories)
+
+                        // Add only one story for this user to show in the RecyclerView
+                        uniqueUsers[userId] = userStories.first()
+                    }
+                }
+
+                // Update the adapter with unique users
+                val displayList = uniqueUsers.values.toList()
+                storyAdapter = Story_adapter(this@MainActivity, displayList) { selectedStory ->
+                    // When a user clicks, filter and pass their stories to FullScreenStoryActivity
+                    val selectedUserId = selectedStory.userId
+                    val userStories = storyList.filter { it.userId == selectedUserId }
+                    val intent = Intent(this@MainActivity, FullScreenStoryActivity::class.java)
+                    intent.putParcelableArrayListExtra("STORY_LIST", ArrayList(userStories))
+                    startActivity(intent)
+                }
+                storiesRecyclerView.adapter = storyAdapter
+                storyAdapter.notifyDataSetChanged()
+                swipeRefreshLayout.isRefreshing = false
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("Firebase", "Failed to fetch stories", error.toException())
+                swipeRefreshLayout.isRefreshing = false
+            }
+        })
+    }
+
+
+
+    private fun saveStoryToDatabase(story: Story) {
+        val storiesRef = database.child("stories").child(story.userId).push()
+        storiesRef.setValue(story).addOnCompleteListener { task ->
             if (task.isSuccessful) {
-                Toast.makeText(this, "Story uploaded successfully", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Story uploaded successfully.", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "Failed to upload story", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Failed to save story to database.", Toast.LENGTH_SHORT).show()
             }
         }
     }
+
 }

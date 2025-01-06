@@ -36,13 +36,19 @@ class Story_adapter(
     }
 
     override fun onBindViewHolder(holder: StoryViewHolder, position: Int) {
-        holder.bind(storyList[position])
+        val story = storyList[position]
+        holder.bind(story)
+
         holder.itemView.setOnClickListener {
+            val userId = story.userId
+            // Filter all stories of the selected user
+            val userStories = storyList.filter { it.userId == userId }
             val intent = Intent(context, FullScreenStoryActivity::class.java)
-            intent.putParcelableArrayListExtra("STORY_LIST", ArrayList(storyList))
+            intent.putParcelableArrayListExtra("STORY_LIST", ArrayList(userStories))
             context.startActivity(intent)
         }
     }
+
 
     override fun getItemCount(): Int {
         return storyList.size
